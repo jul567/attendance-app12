@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Student Attendance Portal</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; -webkit-tap-highlight-color: transparent; }
+    body { background: #f4f7f6; display: flex; justify-content: center; min-height: 100vh; padding: 10px; }
+    .container { background: #fff; width: 100%; max-width: 500px; border-radius: 12px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+    h2 { color: #2c3e50; text-align: center; margin-bottom: 20px; }
+    .status-card { background: #eef2f7; border-radius: 8px; padding: 15px; margin-bottom: 15px; font-size: 14px; border-left: 4px solid #3498db; }
+    input, textarea { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; }
+    
+    .btn { width: 100%; padding: 15px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.3s; margin-top: 10px; font-size: 15px; }
+    .btn-login { background: #3498db; color: white; }
+    .btn-in { background: #27ae60; color: white; }
+    .btn-remark { background: #7f8c8d; color: white; }
+    .btn-report { background: #9b59b6; color: white; margin-bottom: 15px; } /* Purple button for report */
+    
+    .cam-area { width: 100%; aspect-ratio: 4/3; background: #000; border-radius: 10px; overflow: hidden; margin-bottom: 20px; }
+    video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+    
+    /* Dashboard Container Styling */
+    #reportSection { display: none; margin-top: 15px; border-radius: 10px; overflow: hidden; border: 1px solid #eee; }
+    #reportSection iframe { width: 100%; height: 500px; border: 0; }
+
+    #dashboard, #toast { display: none; }
+    #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 12px 24px; border-radius: 30px; z-index: 1000; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+<div id="toast"></div>
+
+<div class="container">
+  <!-- LOGIN SCREEN -->
+  <div id="loginDiv">
+    <h2>Student Login</h2>
+    <input type="text" id="rollNo" placeholder="Roll Number">
+    <input type="password" id="password" placeholder="Password">
+    <button class="btn btn-login" onclick="login()">Sign In</button>
+  </div>
+
+  <!-- MAIN DASHBOARD -->
+  <div id="dashboard">
+    <div class="status-card" id="userInfo"></div>
+
+    <!-- Toggle Button for Dashboard -->
+    <button class="btn btn-report" id="toggleReportBtn" onclick="toggleReport()">View Analytics Dashboard</button>
+
+    <!-- Report Embed Section -->
+    <div id="reportSection">
+      <iframe src="https://datastudio.google.com/embed/reporting/27c74f70-e9d5-442b-b3b2-19880f2f0ceb/page/oilxF" 
+              allowfullscreen 
+              sandbox="allow-storage-access-by-user-activation allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox">
+      </iframe>
+    </div>
+
+    <!-- Attendance Section -->
+    <div id="attendanceUI">
+      <div class="cam-area"><video id="video" autoplay playsinline></video></div>
+      <div id="actionRow">
+        <button id="btnIn" class="btn btn-in" onclick="submitAttendance()">Mark Attendance</button>
+      </div>
+      <div style="margin-top: 25px; padding-top: 15px; border-top: 1px solid #eee;">
+        <p style="font-size: 12px; font-weight: bold; margin-bottom: 5px;">Remarks / Absence Reason</p>
+        <textarea id="remarksField" rows="2" placeholder="Enter reason if absent..."></textarea>
+        <button class="btn btn-remark" id="remarkBtn" onclick="sendRemark()">Submit Response</button>
+      </div>
+    </div>
+    
+    <button class="btn" style="background:#e74c3c; color:white; margin-top:30px;" onclick="location.reload()">Log Out</button>
+  </div>
+</div>
+
+<script>
+var SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyBoxm_1Pqf3WMYa41zytiGBgtUdsG43WXOC09g5aiO_J8AToqcuUBFQX6hW2Xb45gH/exec";
+var user = null;
+var videoStream = null;
+var isReportVisible = false;
+
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.style.display = "block";
+  setTimeout(() => t.style.display = "none", 4000);
+}
+
+function toggleReport() {
+  const report = document.getElementById("reportSection");
+  const attendance = document.getElementById("attendanceUI");
+  const btn = document.getElementById("toggleReportBtn");
+  
+  if (!isReportVisible) {
+    report.style.display = "block";
+    attendance.style.display = "none";
+    btn.textContent = "Back to Attendance Tool";
+    isReportVisible = true;
+  } else {
+    report.style.display = "none";
+    attendance.style.display = "block";
+    btn.textContent = "View Analytics Dashboard";
+    isReportVisible = false;
+  }
+}
+
+function login() {
+  const r = document.getElementById("rollNo").value.trim();
+  const p = document.getElementById("password").value.trim();
+  if(!r || !p) return toast("Enter both fields");
+  toast("Authenticating...");
+  const script = document.createElement("script");
+  script.src = `${SCRIPT_URL}?action=login&rollNo=${encodeURIComponent(r)}&password=${encodeURIComponent(p)}&callback=authDone`;
+  document.body.appendChild(script);
+}
+
+window.authDone = (res) => {
+  if(!res.success) return toast(res.message);
+  user = { ...res, rollNo: document.getElementById("rollNo").value.trim(), password: document.getElementById("password").value.trim() };
+  
+  document.getElementById("loginDiv").style.display = "none";
+  document.getElementById("dashboard").style.display = "block";
+  document.getElementById("userInfo").innerHTML = `<strong>${user.name}</strong><br>${user.course} | Sem ${user.semester}<br>School: ${user.school}`;
+  document.getElementById("btnIn").style.display = (res.status === "PENDING_IN") ? "block" : "none";
+  
+  if(res.status === "COMPLETED") {
+    document.getElementById("actionRow").innerHTML = "<p style='text-align:center; color:#27ae60; font-weight:bold;'>Attendance Completed ✅</p>";
+  }
+  initCamera();
+};
+
+async function initCamera() {
+  try {
+    videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+    document.getElementById("video").srcObject = videoStream;
+  } catch (err) { toast("Camera Access Denied"); }
+}
+
+async function submitAttendance() {
+  const btn = document.getElementById("btnIn");
+  btn.disabled = true; btn.textContent = "Processing...";
+  const canvas = document.createElement("canvas");
+  const video = document.getElementById("video");
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  canvas.getContext("2d").drawImage(video, 0, 0);
+  const photoBase64 = canvas.toDataURL("image/jpeg", 0.5);
+
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    const gpsData = `${pos.coords.latitude},${pos.coords.longitude}`;
+    const data = { action: 'markIn', ...user, photo: photoBase64, gps: gpsData };
+    await fetch(SCRIPT_URL, { method: "POST", mode: "no-cors", body: JSON.stringify(data) });
+    toast("Attendance Recorded!");
+    setTimeout(() => location.reload(), 2000);
+  }, () => {
+    toast("GPS Error: Location required");
+    btn.disabled = false; btn.textContent = "Mark Attendance";
+  });
+}
+
+async function sendRemark() {
+  const rem = document.getElementById("remarksField").value.trim();
+  if(!rem) return toast("Enter remark first");
+  document.getElementById("remarkBtn").disabled = true;
+  const data = { action: "submitRemarks", ...user, remark: rem };
+  await fetch(SCRIPT_URL, { method: "POST", mode: "no-cors", body: JSON.stringify(data) });
+  toast("Remarks Registered!");
+  document.getElementById("remarksField").value = "";
+  document.getElementById("remarkBtn").disabled = false;
+}
+</script>
+</body>
+</html>
